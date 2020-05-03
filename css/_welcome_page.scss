@@ -43,16 +43,20 @@ body.welcome-page {
             line-height: $welcomePageHeaderTextTitleLineHeight;
             margin-bottom: $welcomePageHeaderTextTitleMarginBottom;
             opacity: $welcomePageHeaderTextTitleOpacity;
+            background-color: $welcomePageHeaderTextBackground;
+            padding: $welcomePageHeaderTextPadding;
         }
 
         .header-text-description {
             display: $welcomePageHeaderTextDescriptionDisplay;
-            color: $welcomePageDescriptionColor;
+            color: $welcomePageHeaderTextDescriptionColor;
             font-size: $welcomePageHeaderTextDescriptionFontSize;
             font-weight: $welcomePageHeaderTextDescriptionFontWeight;
             line-height: $welcomePageHeaderTextDescriptionLineHeight;
             margin-bottom: $welcomePageHeaderTextDescriptionMarginBottom;
             align-self: $welcomePageHeaderTextDescriptionAlignSelf;
+            background-color: $welcomePageHeaderTextDescriptionBackground;
+            padding: $welcomePageHeaderTextDescriptionPadding;
         }
 
         #enter_room {
@@ -102,7 +106,7 @@ body.welcome-page {
             text-align: left;
             min-height: 354px;
             width: 710px;
-            background: #75A7E7;
+            background: #57AC37;
             display: $welcomePageTabContainerDisplay;
             flex-direction: column;
 
