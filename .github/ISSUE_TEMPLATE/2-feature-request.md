@@ -1,7 +1,9 @@
 ---
 name: "Feature request"
 about: Suggest an idea for this project
-
+title: ''
+labels: 'feature-request'
+assignees: ''
 ---
 
 <!--
@@ -9,7 +11,7 @@ Thank you for suggesting an idea to make Jitsi Meet better.
 
 Please fill in as much of the template below as you're able.
 
-Note that the ultimate decission for implementing features lies on the Jitsi team, not all feature requests shall be accepted.
+Note that the ultimate decision for implementing features lies on the Jitsi team, not all feature requests shall be accepted.
 -->
 
 **Is your feature request related to a problem you are facing?**

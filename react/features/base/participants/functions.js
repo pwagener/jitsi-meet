@@ -1,11 +1,12 @@
 // @flow
-import { getGravatarURL } from 'js-utils/avatar';
 
-import { toState } from '../redux';
+import { getGravatarURL } from '@jitsi/js-utils/avatar';
+import type { Store } from 'redux';
 
 import { JitsiParticipantConnectionStatus } from '../lib-jitsi-meet';
 import { MEDIA_TYPE, shouldRenderVideoTrack } from '../media';
-import { getTrackByMediaTypeAndParticipant } from '../tracks';
+import { toState } from '../redux';
+import { getTrackByMediaTypeAndParticipant, isRemoteTrackMuted } from '../tracks';
 import { createDeferred } from '../util';
 
 import {
@@ -23,30 +24,39 @@ declare var interfaceConfig: Object;
  */
 const AVATAR_QUEUE = [];
 const AVATAR_CHECKED_URLS = new Map();
-/* eslint-disable arrow-body-style */
+/* eslint-disable arrow-body-style, no-unused-vars */
 const AVATAR_CHECKER_FUNCTIONS = [
-    participant => {
+    (participant, _) => {
         return participant && participant.isJigasi ? JIGASI_PARTICIPANT_ICON : null;
     },
-    participant => {
+    (participant, _) => {
         return participant && participant.avatarURL ? participant.avatarURL : null;
     },
-    participant => {
-        return participant && participant.email ? getGravatarURL(participant.email) : null;
+    (participant, store) => {
+        if (participant && participant.email) {
+            // TODO: remove once libravatar has deployed their new scaled up infra. -saghul
+            const gravatarBaseURL
+                = store.getState()['features/base/config'].gravatarBaseURL ?? 'https://www.gravatar.com/avatar/';
+
+            return getGravatarURL(participant.email, gravatarBaseURL);
+        }
+
+        return null;
     }
 ];
-/* eslint-enable arrow-body-style */
+/* eslint-enable arrow-body-style, no-unused-vars */
 
 /**
  * Resolves the first loadable avatar URL for a participant.
  *
  * @param {Object} participant - The participant to resolve avatars for.
+ * @param {Store} store - Redux store.
  * @returns {Promise}
  */
-export function getFirstLoadableAvatarUrl(participant: Object) {
+export function getFirstLoadableAvatarUrl(participant: Object, store: Store<any, any>) {
     const deferred = createDeferred();
     const fullPromise = deferred.promise
-        .then(() => _getFirstLoadableAvatarUrl(participant))
+        .then(() => _getFirstLoadableAvatarUrl(participant, store))
         .then(src => {
 
             if (AVATAR_QUEUE.length) {
@@ -243,6 +253,33 @@ function _getAllParticipants(stateful) {
 }
 
 /**
+ * Returns the youtube fake participant.
+ * At the moment it is considered the youtube participant the only fake participant in the list.
+ *
+ * @param {(Function|Object|Participant[])} stateful - The redux state
+ * features/base/participants, the (whole) redux state, or redux's
+ * {@code getState} function to be used to retrieve the state
+ * features/base/participants.
+ * @private
+ * @returns {Participant}
+ */
+export function getYoutubeParticipant(stateful: Object | Function) {
+    const participants = _getAllParticipants(stateful);
+
+    return participants.filter(p => p.isFakeParticipant)[0];
+}
+
+/**
+ * Returns true if the participant is a moderator.
+ *
+ * @param {string} participant - Participant object.
+ * @returns {boolean}
+ */
+export function isParticipantModerator(participant: Object) {
+    return participant?.role === PARTICIPANT_ROLE.MODERATOR;
+}
+
+/**
  * Returns true if all of the meeting participants are moderators.
  *
  * @param {Object|Function} stateful -Object or function that can be resolved
@@ -252,13 +289,7 @@ function _getAllParticipants(stateful) {
 export function isEveryoneModerator(stateful: Object | Function) {
     const participants = _getAllParticipants(stateful);
 
-    for (const participant of participants) {
-        if (participant.role !== PARTICIPANT_ROLE.MODERATOR) {
-            return false;
-        }
-    }
-
-    return true;
+    return participants.every(isParticipantModerator);
 }
 
 /**
@@ -277,12 +308,9 @@ export function isIconUrl(icon: ?string | ?Object) {
  *
  * @param {Object|Function} stateful - Object or function that can be resolved
  * to the Redux state.
- * @param {?boolean} ignoreToken - When true we ignore the token check.
  * @returns {boolean}
  */
-export function isLocalParticipantModerator(
-        stateful: Object | Function,
-        ignoreToken: ?boolean = false) {
+export function isLocalParticipantModerator(stateful: Object | Function) {
     const state = toState(stateful);
     const localParticipant = getLocalParticipant(state);
 
@@ -290,11 +318,7 @@ export function isLocalParticipantModerator(
         return false;
     }
 
-    return (
-        localParticipant.role === PARTICIPANT_ROLE.MODERATOR
-        && (ignoreToken
-                || !state['features/base/config'].enableUserRolesBasedOnToken
-                || !state['features/base/jwt'].isGuest));
+    return localParticipant.role === PARTICIPANT_ROLE.MODERATOR;
 }
 
 /**
@@ -346,14 +370,54 @@ export function shouldRenderParticipantVideo(stateful: Object | Function, id: st
 }
 
 /**
+ * Figures out the value of mutedWhileDisconnected status by taking into
+ * account remote participant's network connectivity and video muted status.
+ * The flag is set to <tt>true</tt> if remote participant's video gets muted
+ * during his media connection disruption. This is to prevent black video
+ * being render on the thumbnail, because even though once the video has
+ * been played the image usually remains on the video element it seems that
+ * after longer period of the video element being hidden this image can be
+ * lost.
+ *
+ * @param {Object|Function} stateful - Object or function that can be resolved
+ * to the Redux state.
+ * @param {string} participantID - The ID of the participant.
+ * @param {string} [connectionStatus] - A connection status to be used.
+ * @returns {boolean} - The mutedWhileDisconnected value.
+ */
+export function figureOutMutedWhileDisconnectedStatus(
+        stateful: Function | Object, participantID: string, connectionStatus: ?string) {
+    const state = toState(stateful);
+    const participant = getParticipantById(state, participantID);
+
+    if (!participant || participant.local) {
+        return undefined;
+    }
+
+    const isActive = (connectionStatus || participant.connectionStatus) === JitsiParticipantConnectionStatus.ACTIVE;
+    const isVideoMuted = isRemoteTrackMuted(state['features/base/tracks'], MEDIA_TYPE.VIDEO, participantID);
+    let mutedWhileDisconnected = participant.mutedWhileDisconnected || false;
+
+    if (!isActive && isVideoMuted) {
+        mutedWhileDisconnected = true;
+    } else if (isActive && !isVideoMuted) {
+        mutedWhileDisconnected = false;
+    }
+
+    return mutedWhileDisconnected;
+}
+
+
+/**
  * Resolves the first loadable avatar URL for a participant.
  *
  * @param {Object} participant - The participant to resolve avatars for.
+ * @param {Store} store - Redux store.
  * @returns {?string}
  */
-async function _getFirstLoadableAvatarUrl(participant) {
+async function _getFirstLoadableAvatarUrl(participant, store) {
     for (let i = 0; i < AVATAR_CHECKER_FUNCTIONS.length; i++) {
-        const url = AVATAR_CHECKER_FUNCTIONS[i](participant);
+        const url = AVATAR_CHECKER_FUNCTIONS[i](participant, store);
 
         if (url) {
             if (AVATAR_CHECKED_URLS.has(url)) {

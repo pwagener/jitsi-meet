@@ -1,6 +1,6 @@
 /* @flow */
 
-import { parseURLParams } from '../config';
+import { parseURLParams } from '../util';
 
 /**
  * Retrieves the JSON Web Token (JWT), if any, defined by a specific
@@ -13,4 +13,16 @@ import { parseURLParams } from '../config';
  */
 export function parseJWTFromURLParams(url: URL = window.location) {
     return parseURLParams(url, true, 'search').jwt;
+}
+
+/**
+ * Returns the user name after decoding the jwt.
+ *
+ * @param {Object} state - The app state.
+ * @returns {string}
+ */
+export function getJwtName(state: Object) {
+    const { user } = state['features/base/jwt'];
+
+    return user?.name || '';
 }

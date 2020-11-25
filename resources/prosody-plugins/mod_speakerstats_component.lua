@@ -40,6 +40,11 @@ function on_message(event)
             log("warn", "No room found %s", roomAddress);
             return false;
         end
+ 
+        if not room.speakerStats then
+            log("warn", "No speakerStats found for %s", roomAddress);
+            return false;
+        end
 
         local roomSpeakerStats = room.speakerStats;
         local from = event.stanza.attr.from;
@@ -88,8 +93,7 @@ end
 -- saves start time if it is new dominat speaker
 -- or calculates and accumulates time of speaking
 function SpeakerStats:setDominantSpeaker(isNowDominantSpeaker)
-    log("debug",
-        "set isDominant %s for %s", tostring(isNowDominantSpeaker), self.nick);
+    -- log("debug", "set isDominant %s for %s", tostring(isNowDominantSpeaker), self.nick);
 
     if not self:isDominantSpeaker() and isNowDominantSpeaker then
         self._dominantSpeakerStart = socket.gettime()*1000;
@@ -113,7 +117,7 @@ end
 function room_created(event)
     local room = event.room;
 
-    if is_healthcheck_room(room) then
+    if is_healthcheck_room(room.jid) then
         return;
     end
 
@@ -124,7 +128,7 @@ end
 function occupant_joined(event)
     local room = event.room;
 
-    if is_healthcheck_room(room) then
+    if is_healthcheck_room(room.jid) then
         return;
     end
 
@@ -184,7 +188,11 @@ end
 function occupant_leaving(event)
     local room = event.room;
 
-    if is_healthcheck_room(room) then
+    if is_healthcheck_room(room.jid) then
+        return;
+    end
+ 
+    if not room.speakerStats then
         return;
     end
 
@@ -205,7 +213,7 @@ end
 function room_destroyed(event)
     local room = event.room;
 
-    if is_healthcheck_room(room) then
+    if is_healthcheck_room(room.jid) then
         return;
     end
 

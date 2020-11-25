@@ -1,17 +1,12 @@
-/* global APP, $, config, interfaceConfig */
+/* global APP, $, config */
 
-const logger = require('jitsi-meet-logger').getLogger(__filename);
 
 const UI = {};
 
-import messageHandler from './util/MessageHandler';
-import UIUtil from './util/UIUtil';
-import UIEvents from '../../service/UI/UIEvents';
-import EtherpadManager from './etherpad/Etherpad';
-import SharedVideoManager from './shared_video/SharedVideo';
+import EventEmitter from 'events';
+import Logger from 'jitsi-meet-logger';
 
-import VideoLayout from './videolayout/VideoLayout';
-
+import { isMobileBrowser } from '../../react/features/base/environment/utils';
 import { getLocalParticipant } from '../../react/features/base/participants';
 import { toggleChat } from '../../react/features/chat';
 import { setDocumentUrl } from '../../react/features/etherpad';
@@ -21,9 +16,16 @@ import {
     dockToolbox,
     setToolboxEnabled,
     showToolbox
-} from '../../react/features/toolbox';
+} from '../../react/features/toolbox/actions.web';
+import UIEvents from '../../service/UI/UIEvents';
 
-const EventEmitter = require('events');
+import EtherpadManager from './etherpad/Etherpad';
+import SharedVideoManager from './shared_video/SharedVideo';
+import messageHandler from './util/MessageHandler';
+import UIUtil from './util/UIUtil';
+import VideoLayout from './videolayout/VideoLayout';
+
+const logger = Logger.getLogger(__filename);
 
 UI.messageHandler = messageHandler;
 
@@ -98,19 +100,6 @@ UI.notifyReservationError = function(code, msg) {
 };
 
 /**
- * Notify user that conference was destroyed.
- * @param reason {string} the reason text
- */
-UI.notifyConferenceDestroyed = function(reason) {
-    // FIXME: use Session Terminated from translation, but
-    // 'reason' text comes from XMPP packet and is not translated
-    messageHandler.showError({
-        description: reason,
-        titleKey: 'dialog.sessTerminated'
-    });
-};
-
-/**
  * Change nickname for the user.
  * @param {string} id user id
  * @param {string} displayName new nickname
@@ -154,9 +143,7 @@ UI.start = function() {
     $.prompt.setDefaults({ persistent: false });
 
     VideoLayout.init(eventEmitter);
-    if (!interfaceConfig.filmStripOnly) {
-        VideoLayout.initLargeVideo();
-    }
+    VideoLayout.initLargeVideo();
 
     // Do not animate the video area on UI start (second argument passed into
     // resizeVideoArea) because the animation is not visible anyway. Plus with
@@ -166,10 +153,13 @@ UI.start = function() {
 
     sharedVideoManager = new SharedVideoManager(eventEmitter);
 
-    if (interfaceConfig.filmStripOnly) {
-        $('body').addClass('filmstrip-only');
-        APP.store.dispatch(setNotificationsEnabled(false));
-    } else if (config.iAmRecorder) {
+    if (isMobileBrowser()) {
+        $('body').addClass('mobile-browser');
+    } else {
+        $('body').addClass('desktop-browser');
+    }
+
+    if (config.iAmRecorder) {
         // in case of iAmSipGateway keep local video visible
         if (!config.iAmSipGateway) {
             VideoLayout.setLocalVideoVisible(false);
@@ -353,16 +343,11 @@ UI.showLoginPopup = function(callback) {
     });
 };
 
-UI.askForNickname = function() {
-    // eslint-disable-next-line no-alert
-    return window.prompt('Your nickname (optional)');
-};
-
 /**
  * Sets muted audio state for participant
  */
-UI.setAudioMuted = function(id, muted) {
-    VideoLayout.onAudioMute(id, muted);
+UI.setAudioMuted = function(id) {
+    // FIXME: Maybe this can be removed!
     if (APP.conference.isLocalId(id)) {
         APP.conference.updateAudioIconEnabled();
     }
@@ -371,8 +356,8 @@ UI.setAudioMuted = function(id, muted) {
 /**
  * Sets muted video state for participant
  */
-UI.setVideoMuted = function(id, muted) {
-    VideoLayout.onVideoMute(id, muted);
+UI.setVideoMuted = function(id) {
+    VideoLayout.onVideoMute(id);
     if (APP.conference.isLocalId(id)) {
         APP.conference.updateVideoIconEnabled();
     }
@@ -566,82 +551,6 @@ UI.getLargeVideo = function() {
 };
 
 /**
- * Shows "Please go to chrome webstore to install the desktop sharing extension"
- * 2 button dialog with buttons - cancel and go to web store.
- * @param url {string} the url of the extension.
- */
-UI.showExtensionExternalInstallationDialog = function(url) {
-    let openedWindow = null;
-
-    const submitFunction = function(e, v) {
-        if (v) {
-            e.preventDefault();
-            if (openedWindow === null || openedWindow.closed) {
-                openedWindow
-                    = window.open(
-                        url,
-                        'extension_store_window',
-                        'resizable,scrollbars=yes,status=1');
-            } else {
-                openedWindow.focus();
-            }
-        }
-    };
-
-    const closeFunction = function(e, v) {
-        if (openedWindow) {
-            // Ideally we would close the popup, but this does not seem to work
-            // on Chrome. Leaving it uncommented in case it could work
-            // in some version.
-            openedWindow.close();
-            openedWindow = null;
-        }
-        if (!v) {
-            eventEmitter.emit(UIEvents.EXTERNAL_INSTALLATION_CANCELED);
-        }
-    };
-
-    messageHandler.openTwoButtonDialog({
-        titleKey: 'dialog.externalInstallationTitle',
-        msgKey: 'dialog.externalInstallationMsg',
-        leftButtonKey: 'dialog.goToStore',
-        submitFunction,
-        loadedFunction: $.noop,
-        closeFunction
-    });
-};
-
-/**
- * Shows a dialog which asks user to install the extension. This one is
- * displayed after installation is triggered from the script, but fails because
- * it must be initiated by user gesture.
- * @param callback {function} function to be executed after user clicks
- * the install button - it should make another attempt to install the extension.
- */
-UI.showExtensionInlineInstallationDialog = function(callback) {
-    const submitFunction = function(e, v) {
-        if (v) {
-            callback();
-        }
-    };
-
-    const closeFunction = function(e, v) {
-        if (!v) {
-            eventEmitter.emit(UIEvents.EXTERNAL_INSTALLATION_CANCELED);
-        }
-    };
-
-    messageHandler.openTwoButtonDialog({
-        titleKey: 'dialog.externalInstallationTitle',
-        msgKey: 'dialog.inlineInstallationMsg',
-        leftButtonKey: 'dialog.inlineInstallExtension',
-        submitFunction,
-        loadedFunction: $.noop,
-        closeFunction
-    });
-};
-
-/**
  * Show shared video.
  * @param {string} id the id of the sender of the command
  * @param {string} url video url
@@ -687,6 +596,16 @@ UI.onUserFeaturesChanged = user => VideoLayout.onUserFeaturesChanged(user);
  * @returns {number} The number of remote videos.
  */
 UI.getRemoteVideosCount = () => VideoLayout.getRemoteVideosCount();
+
+/**
+ * Returns the video type of the remote participant's video.
+ * This is needed for the torture clients to determine the video type of the
+ * remote participants.
+ *
+ * @param {string} participantID - The id of the remote participant.
+ * @returns {string} The video type "camera" or "desktop".
+ */
+UI.getRemoteVideoType = participantID => VideoLayout.getRemoteVideoType(participantID);
 
 /**
  * Sets the remote control active status for a remote participant.

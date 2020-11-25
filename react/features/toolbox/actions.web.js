@@ -3,15 +3,15 @@
 import type { Dispatch } from 'redux';
 
 import {
+    FULL_SCREEN_CHANGED,
+    SET_FULL_SCREEN
+} from './actionTypes';
+import {
     clearToolboxTimeout,
     setToolboxTimeout,
     setToolboxTimeoutMS,
     setToolboxVisible
 } from './actions.native';
-import {
-    FULL_SCREEN_CHANGED,
-    SET_FULL_SCREEN
-} from './actionTypes';
 
 declare var interfaceConfig: Object;
 
@@ -25,10 +25,6 @@ export * from './actions.native';
  */
 export function dockToolbox(dock: boolean): Function {
     return (dispatch: Dispatch<any>, getState: Function) => {
-        if (interfaceConfig.filmStripOnly) {
-            return;
-        }
-
         const { timeoutMS, visible } = getState()['features/toolbox'];
 
         if (dock) {
